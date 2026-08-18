@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
+import { AuthScreen } from "../components/auth-screen";
 import { addPackage, groupStops, makeDemoRoute, progress, type RouteState } from "../lib/domain";
 import { loadRoute, saveRoute } from "../lib/offline-store";
 import { optimizeStops, routeDistance } from "../lib/routing/local-optimizer";
+import { getSupabaseBrowserClient, isSupabaseConfigured } from "../lib/supabase/client";
+import { loadRemoteRoute, saveRemoteRoute } from "../lib/supabase/route-repository";
 
 type View = "dashboard" | "scan" | "optimize" | "drive" | "summary";
 const icons: Record<string, string> = { dashboard: "⌂", routes: "↗", scan: "⌗", history: "◷", more: "•••" };
+const demoMode = process.env.NEXT_PUBLIC_DEMO_MODE !== "false";
 
 export function BeepRouteApp() {
   const [route, setRoute] = useState<RouteState | null>(null);
@@ -15,9 +20,22 @@ export function BeepRouteApp() {
   const [notice, setNotice] = useState("");
   const [online, setOnline] = useState(true);
   const [ready, setReady] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
-  useEffect(() => { loadRoute().then((saved) => { if (saved) setRoute(saved); setReady(true); }).catch(() => setReady(true)); const sync = () => setOnline(navigator.onLine); sync(); addEventListener("online", sync); addEventListener("offline", sync); if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined); return () => { removeEventListener("online", sync); removeEventListener("offline", sync); }; }, []);
-  useEffect(() => { if (route && ready) void saveRoute(route); }, [route, ready]);
+  useEffect(() => {
+    const sync = () => setOnline(navigator.onLine); sync(); addEventListener("online", sync); addEventListener("offline", sync);
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    if (demoMode) loadRoute().then((saved) => { if (saved) setRoute(saved); setReady(true); }).catch(() => setReady(true));
+    else if (isSupabaseConfigured()) {
+      const supabase = getSupabaseBrowserClient();
+      supabase.auth.getSession().then(({ data }) => { setUser(data.session?.user ?? null); if (!data.session) setReady(true); });
+      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => { setUser(session?.user ?? null); if (!session) { setRoute(null); setReady(true); } });
+      return () => { removeEventListener("online", sync); removeEventListener("offline", sync); listener.subscription.unsubscribe(); };
+    } else queueMicrotask(() => setReady(true));
+    return () => { removeEventListener("online", sync); removeEventListener("offline", sync); };
+  }, []);
+  useEffect(() => { if (!demoMode && user) { loadRemoteRoute(user.id).then((saved) => { setRoute(saved); setReady(true); }).catch(() => { setNotice("Não foi possível carregar seus dados."); setReady(true); }); } }, [user]);
+  useEffect(() => { if (!route || !ready) return; const timer = setTimeout(() => { if (demoMode) void saveRoute(route); else if (user && online) void saveRemoteRoute(route, user.id).catch(() => setNotice("Alteração salva no aparelho. Sincronizaremos quando possível.")); }, 450); return () => clearTimeout(timer); }, [route, ready, user, online]);
   const metrics = useMemo(() => route ? progress(route) : { total: 0, delivered: 0, failed: 0, pending: 0 }, [route]);
   const activeStop = route?.stops.find((stop) => stop.status === "pending" || stop.status === "skipped");
 
@@ -30,10 +48,14 @@ export function BeepRouteApp() {
   function skipStop() { if (!route || !activeStop) return; const stops = route.stops.map((item) => item.id === activeStop.id ? { ...item, status: "skipped" as const, sequence: route.stops.length + 1 } : item).sort((a, b) => (a.status === "skipped" ? 1 : 0) - (b.status === "skipped" ? 1 : 0)).map((item, index) => ({ ...item, sequence: index + 1 })); setRoute({ ...route, stops }); setNotice("Entrega movida para o fim"); }
   function openMap(kind: "waze" | "google") { if (!activeStop) return; const destination = `${activeStop.latitude},${activeStop.longitude}`; location.href = kind === "waze" ? `https://waze.com/ul?ll=${destination}&navigate=yes` : `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`; }
 
+  if (!demoMode && !isSupabaseConfigured()) return <main className="config-error"><Brand/><h1>Supabase não configurado</h1><p>Adicione a URL e a chave pública nas variáveis do ambiente.</p></main>;
+  if (!demoMode && ready && !user) return <AuthScreen/>;
   if (!ready) return <main className="loading-shell"><div className="skeleton wide"/><div className="skeleton card"/><div className="skeleton card"/></main>;
+  const displayName = user?.email?.split("@")[0] ?? "André";
+  const initials = displayName.slice(0, 2).toUpperCase();
   return <div className="app-frame">
-    <aside className="sidebar"><Brand/><p className="side-label">TRABALHO</p>{[["dashboard","Início"],["routes","Rotas"],["scan","Bipar"],["history","Histórico"]].map(([key,label]) => <button key={key} className={view === key ? "side-link active" : "side-link"} onClick={() => setView(key === "scan" && route ? "scan" : "dashboard")}><span>{icons[key]}</span>{label}</button>)}<div className="side-foot"><span className="avatar">AN</span><div><b>André</b><small>Modo demonstração</small></div></div></aside>
-    <main className="main"><header className="topbar"><Brand/><div className="top-actions">{!online && <span className="offline">● Sem conexão</span>}<span className="demo-pill">DEMO</span><button className="icon-button" aria-label="Notificações">♢</button><span className="avatar">AN</span></div></header>
+    <aside className="sidebar"><Brand/><p className="side-label">TRABALHO</p>{[["dashboard","Início"],["routes","Rotas"],["scan","Bipar"],["history","Histórico"]].map(([key,label]) => <button key={key} className={view === key ? "side-link active" : "side-link"} onClick={() => setView(key === "scan" && route ? "scan" : "dashboard")}><span>{icons[key]}</span>{label}</button>)}<div className="side-foot"><span className="avatar">{initials}</span><div><b>{displayName}</b><small>{demoMode ? "Modo demonstração" : "Supabase conectado"}</small></div>{!demoMode && <button className="logout" onClick={() => void getSupabaseBrowserClient().auth.signOut()}>Sair</button>}</div></aside>
+    <main className="main"><header className="topbar"><Brand/><div className="top-actions">{!online && <span className="offline">● Sem conexão</span>}<span className="demo-pill">{demoMode ? "DEMO" : "CONECTADO"}</span><button className="icon-button" aria-label="Notificações">♢</button><span className="avatar">{initials}</span></div></header>
       {notice && <button className="toast" onClick={() => setNotice("")}>{notice}<span>×</span></button>}
       {view === "dashboard" && <Dashboard route={route} metrics={metrics} onCreate={createRoute} onContinue={() => setView(route?.status === "in_progress" ? "drive" : "scan")}/>} 
       {view === "scan" && route && <Scan route={route} code={code} setCode={setCode} scan={() => scan()} addDemo={addDemo} optimize={optimize}/>} 

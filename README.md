@@ -27,6 +27,8 @@ Consulte `.env.example`. Chaves com `NEXT_PUBLIC_` podem chegar ao navegador. `S
 
 O schema possui RLS, propriedade por usuário, índices, enums, restrição de pacote duplicado e uma única rota ativa.
 
+Com `NEXT_PUBLIC_DEMO_MODE=false`, o aplicativo usa autenticação por e-mail/senha e persiste a rota ativa, pacotes e paradas no Supabase. Configure `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` no ambiente de publicação.
+
 ## Google Maps
 
 Crie chaves separadas no Google Cloud. Restrinja a chave do navegador por domínio; mantenha geocodificação e rotas no servidor. Sem chaves, o app usa o otimizador local aproximado.
