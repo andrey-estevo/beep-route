@@ -1,0 +1,16 @@
+export type PackageStatus = "scanned" | "address_pending" | "ready" | "out_for_delivery" | "delivered" | "failed";
+export type StopStatus = "pending" | "skipped" | "completed" | "failed";
+export type RouteStatus = "draft" | "scanning" | "ready" | "optimized" | "in_progress" | "completed" | "cancelled";
+export interface DeliveryPackage { id: string; trackingCode: string; recipient?: string; address: string; latitude: number; longitude: number; status: PackageStatus; vehiclePosition?: string }
+export interface DeliveryStop { id: string; sequence: number; address: string; latitude: number; longitude: number; status: StopStatus; packages: DeliveryPackage[] }
+export interface RouteState { id: string; name: string; date: string; status: RouteStatus; origin: { address: string; latitude: number; longitude: number }; packages: DeliveryPackage[]; stops: DeliveryStop[]; startedAt?: string; completedAt?: string }
+export const demoAddresses = [
+  { address: "Av. Paulista, 1578 — Bela Vista, São Paulo", latitude: -23.5614, longitude: -46.6559 },
+  { address: "Rua Haddock Lobo, 595 — Cerqueira César, São Paulo", latitude: -23.5588, longitude: -46.6654 },
+  { address: "Rua Oscar Freire, 900 — Jardins, São Paulo", latitude: -23.5626, longitude: -46.6708 },
+  { address: "Alameda Santos, 1415 — Jardim Paulista, São Paulo", latitude: -23.5652, longitude: -46.6538 },
+];
+export function makeDemoRoute(): RouteState { return { id: crypto.randomUUID(), name: `Rota ${new Intl.DateTimeFormat("pt-BR").format(new Date())}`, date: new Date().toISOString().slice(0, 10), status: "scanning", origin: { address: "Base Vila Mariana, São Paulo", latitude: -23.5896, longitude: -46.6347 }, packages: [], stops: [] }; }
+export function addPackage(route: RouteState, trackingCode: string): { route: RouteState; duplicate: boolean } { const code = trackingCode.trim().toUpperCase(); if (route.packages.some((item) => item.trackingCode === code)) return { route, duplicate: true }; const location = demoAddresses[route.packages.length % demoAddresses.length]; const pack: DeliveryPackage = { id: crypto.randomUUID(), trackingCode: code, address: location.address, latitude: location.latitude, longitude: location.longitude, status: "ready", vehiclePosition: route.packages.length % 2 ? "Caixa A" : "Porta-malas esquerdo" }; return { route: { ...route, packages: [pack, ...route.packages] }, duplicate: false }; }
+export function groupStops(packages: DeliveryPackage[]): DeliveryStop[] { const groups = new Map<string, DeliveryPackage[]>(); for (const item of packages.filter((pack) => pack.status !== "delivered")) { const key = `${item.latitude.toFixed(5)}:${item.longitude.toFixed(5)}`; groups.set(key, [...(groups.get(key) ?? []), item]); } return [...groups.values()].map((items, index) => ({ id: crypto.randomUUID(), sequence: index + 1, address: items[0].address, latitude: items[0].latitude, longitude: items[0].longitude, status: "pending", packages: items })); }
+export function progress(route: RouteState) { const delivered = route.packages.filter((item) => item.status === "delivered").length; const failed = route.packages.filter((item) => item.status === "failed").length; return { delivered, failed, pending: route.packages.length - delivered - failed, total: route.packages.length }; }
