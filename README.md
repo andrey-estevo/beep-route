@@ -46,7 +46,12 @@ Manifest e service worker permitem instalação e cache do shell. A rota ativa �
 
 ## Publicação
 
-O projeto usa Sites/Vinext e pode ser publicado pelo Codex Sites. A configuração de produção deve receber as variáveis no painel do ambiente, nunca no repositório.
+O projeto mantém dois destinos de publicação:
+
+- Sites/Cloudflare: `npm run build`
+- Vercel/Nitro: `npm run build:vercel`
+
+Na Vercel, importe o repositório e mantenha o preset `Other`. O arquivo `vercel.json` já define o comando; o Nitro gera o formato nativo `.vercel/output`. A configuração de produção deve receber as variáveis no painel do ambiente, nunca no repositório.
 
 ## Limitações atuais
 
