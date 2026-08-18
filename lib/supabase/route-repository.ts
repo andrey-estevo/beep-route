@@ -18,7 +18,7 @@ export async function loadRemoteRoute(userId: string): Promise<RouteState | null
   if (packageError) throw packageError;
   if (stopError) throw stopError;
   const packageRows = (packageData ?? []) as PackageRow[];
-  const packages: DeliveryPackage[] = packageRows.map((item) => ({ id: item.id, trackingCode: item.tracking_code, recipient: item.recipient_name ?? undefined, address: item.address_full ?? "Endereço pendente", latitude: item.latitude ?? 0, longitude: item.longitude ?? 0, status: item.status, vehiclePosition: item.vehicle_position ?? undefined }));
+  const packages: DeliveryPackage[] = packageRows.map((item) => ({ id: item.id, trackingCode: item.tracking_code, recipient: item.recipient_name ?? undefined, address: item.address_full ?? "", latitude: item.latitude ?? 0, longitude: item.longitude ?? 0, status: item.status, vehiclePosition: item.vehicle_position ?? undefined }));
   const packageByStop = new Map<string, DeliveryPackage[]>();
   packageRows.forEach((item, index) => { if (item.stop_id) packageByStop.set(item.stop_id, [...(packageByStop.get(item.stop_id) ?? []), packages[index]]); });
   const stops: DeliveryStop[] = ((stopData ?? []) as StopRow[]).map((item) => ({ id: item.id, sequence: item.sequence, address: item.address_full, latitude: item.latitude, longitude: item.longitude, status: item.status, packages: packageByStop.get(item.id) ?? [] }));
