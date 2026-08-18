@@ -40,4 +40,9 @@ export async function saveRemoteRoute(route: RouteState, userId: string) {
     const { error } = await supabase.from("packages").upsert(route.packages.map((pack) => ({ id: pack.id, user_id: userId, route_id: route.id, stop_id: stopByPackage.get(pack.id) ?? null, tracking_code: pack.trackingCode, barcode_raw: pack.trackingCode, address_full: pack.address, latitude: pack.latitude, longitude: pack.longitude, status: pack.status, vehicle_position: pack.vehiclePosition ?? null, delivered_at: pack.status === "delivered" ? new Date().toISOString() : null, updated_at: new Date().toISOString() })), { onConflict: "id" });
     if (error) throw error;
   }
+  const packageIds = route.packages.map((pack) => pack.id);
+  let deleteQuery = supabase.from("packages").delete().eq("route_id", route.id).eq("user_id", userId);
+  if (packageIds.length) deleteQuery = deleteQuery.not("id", "in", `(${packageIds.join(",")})`);
+  const { error: deleteError } = await deleteQuery;
+  if (deleteError) throw deleteError;
 }
